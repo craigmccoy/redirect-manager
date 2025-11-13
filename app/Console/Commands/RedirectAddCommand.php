@@ -50,6 +50,9 @@ class RedirectAddCommand extends Command
                 $this->error('Domain is required');
                 return self::FAILURE;
             }
+            
+            // Strip protocol if provided
+            $domain = $this->sanitizeDomain($domain);
         } else {
             $path = $this->option('path') ?: $this->ask('Source path (e.g., /old-page or /blog/*)');
             if (!$path) {
@@ -69,10 +72,10 @@ class RedirectAddCommand extends Command
         $this->newLine();
         $configureAdvanced = $this->confirm('Configure advanced options?', false);
         
-        // Basic options
+        // Basic options - always prompt for critical settings
         $preservePath = $this->option('preserve-path') !== null 
             ? $this->option('preserve-path')
-            : ($configureAdvanced && $this->confirm('Preserve the original path in redirect?', $type === 'domain'));
+            : $this->confirm('Preserve the original path in redirect?', $type === 'domain');
             
         $preserveQuery = $this->option('no-preserve-query') !== null
             ? !$this->option('no-preserve-query')
@@ -102,18 +105,19 @@ class RedirectAddCommand extends Command
             return self::FAILURE;
         }
 
-        // Status code
+        // Status code - always prompt (important choice)
         $statusCode = $this->option('status');
         if (!$statusCode || !in_array((int)$statusCode, [301, 302, 307, 308])) {
-            if ($configureAdvanced) {
-                $statusCode = (int) $this->choice(
-                    'HTTP status code?',
-                    [301 => '301 - Permanent redirect', 302 => '302 - Temporary redirect', 307 => '307 - Temporary (preserve method)', 308 => '308 - Permanent (preserve method)'],
-                    301
-                );
-            } else {
-                $statusCode = 301;
-            }
+            $statusCode = (int) $this->choice(
+                'HTTP status code?',
+                [
+                    301 => '301 - Permanent redirect (most common)',
+                    302 => '302 - Temporary redirect',
+                    307 => '307 - Temporary (preserve POST/PUT)',
+                    308 => '308 - Permanent (preserve POST/PUT)'
+                ],
+                301
+            );
         }
         $statusCode = (int) $statusCode;
 
@@ -154,8 +158,14 @@ class RedirectAddCommand extends Command
             }
         }
 
-        // Notes
-        $notes = $this->option('notes') ?: ($configureAdvanced ? $this->ask('Notes (optional)') : null);
+        // Notes - always ask at the end
+        $notes = $this->option('notes');
+
+        // Notes prompt (if not provided via option)
+        if (!$notes) {
+            $this->newLine();
+            $notes = $this->ask('Notes (optional, press Enter to skip)');
+        }
 
         // Show summary and confirm
         $this->newLine();
@@ -178,6 +188,16 @@ class RedirectAddCommand extends Command
                 ['Notes', $notes ?: '-'],
             ]
         );
+        
+        // Show which advanced options used defaults
+        if (!$configureAdvanced) {
+            $this->newLine();
+            $this->components->warn('Advanced options using defaults:');
+            $this->line('  • Force HTTPS: ' . ($forceHttps ? 'Yes' : 'No'));
+            $this->line('  • Case Sensitive: ' . ($caseSensitive ? 'Yes' : 'No'));
+            $this->line('  • Trailing Slash: ' . ($trailingSlashMode ? ucfirst($trailingSlashMode) : 'Ignore'));
+            $this->line('  • Priority: ' . $priority);
+        }
         
         if (!$this->confirm('Create this redirect?', true)) {
             $this->components->warn('Redirect creation cancelled');
@@ -213,5 +233,22 @@ class RedirectAddCommand extends Command
         $this->line("  • Test the redirect by visiting the source URL");
 
         return self::SUCCESS;
+    }
+    
+    /**
+     * Sanitize domain by removing protocol and trailing slashes.
+     */
+    protected function sanitizeDomain(string $domain): string
+    {
+        // Remove http:// or https://
+        $domain = preg_replace('#^https?://#i', '', $domain);
+        
+        // Remove trailing slashes
+        $domain = rtrim($domain, '/');
+        
+        // Remove any path that might have been included
+        $domain = explode('/', $domain)[0];
+        
+        return $domain;
     }
 }

@@ -23,6 +23,17 @@ class RedirectAnalyticsCommand extends Command
         $limit = (int) $this->option('limit');
         $redirectId = $this->option('redirect');
         $showRecent = $this->option('recent');
+        
+        // Validate redirect exists if ID provided
+        if ($redirectId) {
+            $redirect = Redirect::find($redirectId);
+            if (!$redirect) {
+                $this->error("Redirect #{$redirectId} not found");
+                $this->newLine();
+                $this->line('Use "php artisan redirect:list" to see available redirects');
+                return self::FAILURE;
+            }
+        }
 
         $startDate = now()->subDays($days);
 
@@ -86,6 +97,10 @@ class RedirectAnalyticsCommand extends Command
 
         if ($topRedirects->isEmpty()) {
             $this->components->warn('No redirect data found');
+            $this->newLine();
+            $this->line('No requests have been logged yet.');
+            $this->line('  • Check active redirects: php artisan redirect:list --active');
+            $this->line('  • Test a redirect by visiting a source URL');
             return;
         }
 
@@ -185,6 +200,10 @@ class RedirectAnalyticsCommand extends Command
 
         if ($logs->isEmpty()) {
             $this->components->warn('No recent requests found');
+            $this->newLine();
+            $this->line('No requests have been logged yet.');
+            $this->line('  • Check active redirects: php artisan redirect:list --active');
+            $this->line('  • Test a redirect by visiting a source URL');
             return;
         }
 

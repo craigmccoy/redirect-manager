@@ -16,6 +16,25 @@ class RedirectListCommand extends Command
 
     public function handle(): int
     {
+        $this->components->info('Redirect List');
+        
+        // Show filters if applied
+        $filters = [];
+        if ($this->option('active')) {
+            $filters[] = 'Active only';
+        }
+        if ($this->option('inactive')) {
+            $filters[] = 'Inactive only';
+        }
+        if ($type = $this->option('type')) {
+            $filters[] = ucfirst($type) . ' redirects';
+        }
+        
+        if (!empty($filters)) {
+            $this->line('Filters: ' . implode(', ', $filters));
+        }
+        $this->newLine();
+        
         $query = Redirect::query()->byPriority()->orderBy('id');
 
         if ($this->option('active')) {

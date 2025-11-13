@@ -63,7 +63,7 @@ class RedirectUpdateCommand extends Command
         $updated = false;
 
         if ($domain = $this->option('domain')) {
-            $redirect->source_domain = $domain;
+            $redirect->source_domain = $this->sanitizeDomain($domain);
             $redirect->source_type = 'domain';
             $redirect->source_path = null;
             $updated = true;
@@ -197,6 +197,7 @@ class RedirectUpdateCommand extends Command
 
         $redirect->save();
 
+        $this->newLine();
         $this->components->success("✓ Redirect #{$redirect->id} updated successfully");
 
         return self::SUCCESS;
@@ -205,6 +206,7 @@ class RedirectUpdateCommand extends Command
     protected function interactiveUpdate(Redirect $redirect): int
     {
         $choices = [
+            'source' => 'Change source (domain/path)',
             'destination' => 'Change destination URL',
             'options' => 'Update options (path preservation, HTTPS, etc.)',
             'schedule' => 'Update schedule',
@@ -224,6 +226,38 @@ class RedirectUpdateCommand extends Command
             }
 
             switch ($choice) {
+                case 'source':
+                    $currentType = $redirect->source_type;
+                    $changeType = $this->choice(
+                        'Redirect type?',
+                        ['domain' => 'Domain redirect', 'url' => 'URL redirect'],
+                        $currentType
+                    );
+                    
+                    if ($changeType === 'domain') {
+                        $currentSource = $redirect->source_domain ?? 'oldsite.com';
+                        $newSource = $this->ask('Source domain (e.g., oldsite.com or *.oldsite.com)', $currentSource);
+                        $newSource = $this->sanitizeDomain($newSource);
+                        if ($newSource !== $redirect->source_domain || $redirect->source_type !== 'domain') {
+                            $redirect->source_type = 'domain';
+                            $redirect->source_domain = $newSource;
+                            $redirect->source_path = null;
+                            $updated = true;
+                            $this->components->info('✓ Source updated to domain redirect');
+                        }
+                    } else {
+                        $currentSource = $redirect->source_path ?? '/old-page';
+                        $newSource = $this->ask('Source path (e.g., /old-page or /blog/*)', $currentSource);
+                        if ($newSource !== $redirect->source_path || $redirect->source_type !== 'url') {
+                            $redirect->source_type = 'url';
+                            $redirect->source_path = $newSource;
+                            $redirect->source_domain = null;
+                            $updated = true;
+                            $this->components->info('✓ Source updated to URL redirect');
+                        }
+                    }
+                    break;
+
                 case 'destination':
                     $newDestination = $this->ask('New destination URL', $redirect->destination);
                     if ($newDestination !== $redirect->destination) {
@@ -234,55 +268,7 @@ class RedirectUpdateCommand extends Command
                     break;
 
                 case 'options':
-                    if ($this->confirm('Preserve path?', $redirect->preserve_path)) {
-                        $redirect->preserve_path = true;
-                        $updated = true;
-                    } else {
-                        $redirect->preserve_path = false;
-                        $updated = true;
-                    }
-
-                    if ($this->confirm('Preserve query strings?', $redirect->preserve_query_string)) {
-                        $redirect->preserve_query_string = true;
-                        $updated = true;
-                    } else {
-                        $redirect->preserve_query_string = false;
-                        $updated = true;
-                    }
-
-                    if ($this->confirm('Force HTTPS?', $redirect->force_https)) {
-                        $redirect->force_https = true;
-                        $updated = true;
-                    } else {
-                        $redirect->force_https = false;
-                        $updated = true;
-                    }
-
-                    if ($this->confirm('Case-sensitive matching?', $redirect->case_sensitive)) {
-                        $redirect->case_sensitive = true;
-                        $updated = true;
-                    } else {
-                        $redirect->case_sensitive = false;
-                        $updated = true;
-                    }
-
-                    $trailingSlash = $this->choice(
-                        'Trailing slash handling?',
-                        ['ignore' => 'Leave as-is', 'add' => 'Always add', 'remove' => 'Always remove'],
-                        $redirect->trailing_slash_mode ?: 'ignore'
-                    );
-                    $redirect->trailing_slash_mode = $trailingSlash === 'ignore' ? null : $trailingSlash;
-                    $updated = true;
-
-                    $statusCode = $this->choice(
-                        'HTTP status code?',
-                        [301 => '301 - Permanent', 302 => '302 - Temporary', 307 => '307 - Temp (preserve method)', 308 => '308 - Perm (preserve method)'],
-                        $redirect->status_code
-                    );
-                    $redirect->status_code = (int) $statusCode;
-                    $updated = true;
-
-                    $this->components->info('✓ Options updated');
+                    $updated = $this->updateOptions($redirect) || $updated;
                     break;
 
                 case 'schedule':
@@ -349,11 +335,145 @@ class RedirectUpdateCommand extends Command
 
         if ($this->confirm('Save changes?', true)) {
             $redirect->save();
+            
+            $this->newLine();
             $this->components->success("✓ Redirect #{$redirect->id} updated successfully");
+            $this->newLine();
+            $this->components->info('Next steps:');
+            $this->line("  • View details: php artisan redirect:show {$redirect->id}");
+            $this->line("  • List all: php artisan redirect:list");
         } else {
             $this->components->warn('Changes discarded');
         }
 
         return self::SUCCESS;
+    }
+
+    protected function updateOptions(Redirect $redirect): bool
+    {
+        $updated = false;
+        
+        while (true) {
+            $this->newLine();
+            $optionChoice = $this->choice(
+                'Which option to update?',
+                [
+                    'preserve-path' => 'Preserve Path',
+                    'preserve-query' => 'Preserve Query Strings',
+                    'force-https' => 'Force HTTPS',
+                    'case-sensitive' => 'Case Sensitive Matching',
+                    'trailing-slash' => 'Trailing Slash Mode',
+                    'status-code' => 'HTTP Status Code',
+                    'done' => 'Back to main menu'
+                ],
+                'done'
+            );
+            
+            if ($optionChoice === 'done') {
+                break;
+            }
+            
+            switch ($optionChoice) {
+                case 'preserve-path':
+                    $newValue = $this->confirm('Preserve path?', $redirect->preserve_path);
+                    if ($newValue !== $redirect->preserve_path) {
+                        $redirect->preserve_path = $newValue;
+                        $updated = true;
+                        $this->components->info('✓ Preserve path updated');
+                    } else {
+                        $this->line('  No change');
+                    }
+                    break;
+                    
+                case 'preserve-query':
+                    $newValue = $this->confirm('Preserve query strings?', $redirect->preserve_query_string);
+                    if ($newValue !== $redirect->preserve_query_string) {
+                        $redirect->preserve_query_string = $newValue;
+                        $updated = true;
+                        $this->components->info('✓ Preserve query strings updated');
+                    } else {
+                        $this->line('  No change');
+                    }
+                    break;
+                    
+                case 'force-https':
+                    $newValue = $this->confirm('Force HTTPS?', $redirect->force_https);
+                    if ($newValue !== $redirect->force_https) {
+                        $redirect->force_https = $newValue;
+                        $updated = true;
+                        $this->components->info('✓ Force HTTPS updated');
+                    } else {
+                        $this->line('  No change');
+                    }
+                    break;
+                    
+                case 'case-sensitive':
+                    $newValue = $this->confirm('Case-sensitive matching?', $redirect->case_sensitive);
+                    if ($newValue !== $redirect->case_sensitive) {
+                        $redirect->case_sensitive = $newValue;
+                        $updated = true;
+                        $this->components->info('✓ Case sensitivity updated');
+                    } else {
+                        $this->line('  No change');
+                    }
+                    break;
+                    
+                case 'trailing-slash':
+                    $trailingSlash = $this->choice(
+                        'Trailing slash handling?',
+                        ['ignore' => 'Leave as-is', 'add' => 'Always add', 'remove' => 'Always remove'],
+                        $redirect->trailing_slash_mode ?: 'ignore'
+                    );
+                    $newMode = $trailingSlash === 'ignore' ? null : $trailingSlash;
+                    if ($newMode !== $redirect->trailing_slash_mode) {
+                        $redirect->trailing_slash_mode = $newMode;
+                        $updated = true;
+                        $this->components->info('✓ Trailing slash mode updated');
+                    } else {
+                        $this->line('  No change');
+                    }
+                    break;
+                    
+                case 'status-code':
+                    $statusCode = $this->choice(
+                        'HTTP status code?',
+                        [
+                            301 => '301 - Permanent',
+                            302 => '302 - Temporary',
+                            307 => '307 - Temporary (preserve method)',
+                            308 => '308 - Permanent (preserve method)'
+                        ],
+                        $redirect->status_code
+                    );
+                    $newStatus = (int) $statusCode;
+                    if ($newStatus !== $redirect->status_code) {
+                        $redirect->status_code = $newStatus;
+                        $updated = true;
+                        $this->components->info('✓ Status code updated');
+                    } else {
+                        $this->line('  No change');
+                    }
+                    break;
+            }
+        }
+        
+        return $updated;
+    }
+    
+    /**
+     * Sanitize domain by removing protocol and trailing slashes.
+     */
+    protected function sanitizeDomain(string $domain): string
+    {
+        // Remove http:// or https://
+        $domain = preg_replace('#^https?://#i', '', $domain);
+        
+        // Remove trailing slashes
+        $domain = rtrim($domain, '/');
+        
+        // Remove any path that might have been included
+        $domain = explode('/', $domain)[0];
+        
+        return $domain;
     }
 }

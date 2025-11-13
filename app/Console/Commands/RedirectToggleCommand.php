@@ -33,6 +33,14 @@ class RedirectToggleCommand extends Command
         $this->line("  Current status: <fg=".($redirect->is_active ? 'green' : 'red').">{$currentStatus}</>");
         $this->line("  New status: <fg=".(!$redirect->is_active ? 'green' : 'red').">{$newStatus}</>");
         $this->newLine();
+        
+        // Show impact
+        if ($redirect->is_active) {
+            $this->components->warn('⚠ Disabling will stop processing requests immediately');
+        } else {
+            $this->components->info('✓ Enabling will start processing requests');
+        }
+        $this->newLine();
 
         if (!$this->confirm("Toggle this redirect to {$newStatus}?", true)) {
             $this->components->info('Toggle cancelled');
@@ -52,6 +60,11 @@ class RedirectToggleCommand extends Command
         } else {
             $this->line("  The redirect is now processing requests");
         }
+        
+        $this->newLine();
+        $this->components->info('Next steps:');
+        $this->line("  • View details: php artisan redirect:show {$redirect->id}");
+        $this->line("  • List all: php artisan redirect:list");
 
         return self::SUCCESS;
     }
