@@ -82,7 +82,7 @@ RUN chown -R www-data:www-data \
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost/up || exit 1
+    CMD curl -f -s -S --max-time 2 http://localhost/ping || exit 1
 
 # Expose port
 EXPOSE 80
