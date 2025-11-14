@@ -15,7 +15,7 @@ COPY . .
 RUN npm run build
 
 # Stage 3: Runtime
-FROM php:8.4-fpm-trixie
+FROM php:8.3-fpm-bookworm
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
