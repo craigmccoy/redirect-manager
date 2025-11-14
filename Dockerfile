@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y \
     libfreetype6-dev \
     libzip-dev \
     libonig-dev \
+    libicu-dev \
     curl \
     unzip \
     git \
@@ -41,6 +42,7 @@ RUN apt-get update && apt-get install -y \
         opcache \
         bcmath \
         pcntl \
+        intl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
